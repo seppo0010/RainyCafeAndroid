@@ -2,14 +2,12 @@ package com.swaisbrot.rainycafe;
 
 import android.app.Service;
 import android.content.Intent;
-import android.content.res.AssetFileDescriptor;
-import android.media.MediaPlayer;
+import android.media.SoundPool;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
-import android.util.Log;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -18,8 +16,13 @@ public class PlayerService extends Service {
     public static final int STATUS_CAFE = 1;
     public static final int STATUS_RAIN = 2;
 
-    private MediaPlayer cafePlayer = null;
-    private MediaPlayer rainPlayer = null;
+    private SoundPool soundPool;
+    private int cafeSound;
+    private int cafeStream = 0;
+    private boolean cafePaused = false;
+    private int rainSound;
+    private int rainStream = 0;
+    private boolean rainPaused = false;
 
     static final int MSG_REGISTER_CLIENT = 1;
     static final int MSG_UNREGISTER_CLIENT = 2;
@@ -30,6 +33,17 @@ public class PlayerService extends Service {
 
     ArrayList<Messenger> mClients = new ArrayList<Messenger>();
     final Messenger mMessenger = new Messenger(new IncomingHandler());
+
+    @Override
+    public void onCreate() {
+        soundPool = new SoundPool.Builder().setMaxStreams(2).build();
+        try {
+            cafeSound = soundPool.load(getAssets().openFd("cafe.mp3"), 1);
+            rainSound = soundPool.load(getAssets().openFd("rain.mp3"), 1);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private void sendUpdate() {
         int status = (isPlayingCafe() ? STATUS_CAFE : 0) + (isPlayingRain() ? STATUS_RAIN : 0);
@@ -42,38 +56,24 @@ public class PlayerService extends Service {
         }
     }
 
-    private MediaPlayer playAudio(String name) {
-        try {
-            AssetFileDescriptor afd = getAssets().openFd(name);
-            MediaPlayer player = new MediaPlayer();
-            player.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-            player.prepare();
-            player.setLooping(true);
-            player.start();
-            return player;
-        } catch (IOException e) {
-            Log.e(this.getClass().getCanonicalName(), e.getMessage());
-            return null;
-        }
-    }
-
-    private void stopAudio(MediaPlayer player) {
-        if (player != null) {
-            player.stop();
-        }
-    }
-
     public void playCafe() {
-        cafePlayer = playAudio("cafe.mp3");
+        if (cafeStream == 0) {
+            cafeStream = soundPool.play(cafeSound, 100, 100, 0, -1, 1.0f);
+        } else {
+            soundPool.resume(cafeStream);
+            cafePaused = false;
+        }
     }
 
     public void stopCafe() {
-        stopAudio(cafePlayer);
-        cafePlayer = null;
+        if (cafeStream != 0) {
+            soundPool.pause(cafeStream);
+            cafePaused = true;
+        }
     }
 
     public boolean isPlayingCafe() {
-        return cafePlayer != null && cafePlayer.isPlaying();
+        return cafeStream != 0 && !cafePaused;
     }
 
     public void toggleCafe() {
@@ -86,16 +86,23 @@ public class PlayerService extends Service {
     }
 
     public void playRain() {
-        rainPlayer = playAudio("rain.mp3");
+        if (rainStream == 0) {
+            rainStream = soundPool.play(rainSound, 100, 100, 0, -1, 1.0f);
+        } else {
+            soundPool.resume(rainStream);
+            rainPaused = false;
+        }
     }
 
     public void stopRain() {
-        stopAudio(rainPlayer);
-        rainPlayer = null;
+        if (rainStream != 0) {
+            soundPool.pause(rainStream);
+            rainPaused = true;
+        }
     }
 
     public boolean isPlayingRain() {
-        return rainPlayer != null && rainPlayer.isPlaying();
+        return rainStream != 0 && !rainPaused;
     }
 
     public void toggleRain() {
